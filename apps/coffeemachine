@@ -1,0 +1,499 @@
+//Start the code from the bottom
+//There are steps from 1 to 18..follow them to understand the code
+
+/*
+  #define steamLED    12   //B6-
+  #define oneCupLED   39   //B2  //VN
+  #define twoCupsLED  32   //B4
+  #define waterLED    34   //B11
+  #define trashLED    35   //B12 
+  #define alarmLED    16   //B13 //RX2
+  #define rinsingLED  33   //B15
+  #define ecoLED      4    //B17
+
+
+  #define turnOnBTN   27  //B1
+  #define oneCupBTN   14  //B3
+  #define twoCupsBTN  13  //B5
+  #define steamBTN    21  //B7
+
+  #define rinsingBTN  19  //B14
+  #define ecoBTN      18  //B16
+  */
+
+  var characteristicUuid = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+  var serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+  
+  let device; //ESP32
+  let outputStatus = false;
+  let cursorPosition = 0;
+  var locked = 0; //This variable is used to lock the buttons.
+  var HOME = 0;
+  var l = 0;
+  
+  var objectData = {
+    //Object to save the LEDs states
+    steamLED: "OFF",
+    oneCupLED: "OFF",
+    twoCupsLED: "OFF",
+    waterLED: "OFF",
+    trashLED: "OFF",
+    alarmLED: "OFF",
+    rinsingLED: "OFF",
+    ecoLED: "OFF",
+  };
+  
+  var states = {
+    steamState: "OFF", //Object to save the machine features states.
+  };
+  
+  function dataViewToString(dataView) {
+    //This function to get a Srting output
+    let str = "";
+    for (let i = 0; i < dataView.byteLength; i++) {
+      str += String.fromCharCode(dataView.getUint8(i));
+    }
+    return str;
+  }
+  
+  //11-draw the main menu and update it if anything change.
+  function screenWriting(information) {
+    // This function to show the Menu of the App
+    g.clear();
+    g.setFont("Vector", 15);
+    g.setColor(0xffffff); // White color
+    g.drawString(`Device: Connected`, 60, 20);
+    g.setFont("Vector", 20);
+  
+    // Set arrow properties
+    const arrowSizeUP = 5; // Size of the arrow
+    const centerXUP = g.getWidth() - 10; // X-coordinate of the center
+    const centerYUP = g.getHeight() - 7; // Y-coordinate of the center
+  
+    // Draw arrow pointing up
+    g.drawLine(
+      centerXUP - arrowSizeUP / 2,
+      centerYUP - arrowSizeUP,
+      centerXUP + arrowSizeUP / 2,
+      centerYUP - arrowSizeUP
+    );
+    g.drawLine(
+      centerXUP + arrowSizeUP / 2,
+      centerYUP - arrowSizeUP,
+      centerXUP,
+      centerYUP
+    );
+    g.drawLine(
+      centerXUP,
+      centerYUP,
+      centerXUP - arrowSizeUP / 2,
+      centerYUP - arrowSizeUP
+    );
+  
+    const arrowSizeDown = 5; // Size of the arrow
+    const centerXDown = g.getWidth() - 10; // X-coordinate of the center
+    const centerYDown = g.getHeight() / 5; // Y-coordinate of the center
+  
+    // Draw arrow pointing down
+    g.drawLine(
+      centerXDown - arrowSizeDown / 2,
+      centerYDown + arrowSizeDown,
+      centerXDown + arrowSizeDown / 2,
+      centerYDown + arrowSizeDown
+    );
+    g.drawLine(
+      centerXDown + arrowSizeDown / 2,
+      centerYDown + arrowSizeDown,
+      centerXDown,
+      centerYDown
+    );
+    g.drawLine(
+      centerXDown,
+      centerYDown,
+      centerXDown - arrowSizeDown / 2,
+      centerYDown + arrowSizeDown
+    );
+  
+    const arrowSizeLeft = 5; // Size of the arrow
+    const centerXLeft = g.getWidth() - 1; // X-coordinate of the center
+    const centerYLeft = g.getHeight() / 2 + 15; // Y-coordinate of the center
+  
+    // Draw arrow pointing left
+    g.drawLine(
+      centerXLeft - arrowSizeLeft,
+      centerYLeft - arrowSizeLeft / 2,
+      centerXLeft - arrowSizeLeft,
+      centerYLeft + arrowSizeLeft / 2
+    );
+    g.drawLine(
+      centerXLeft - arrowSizeLeft,
+      centerYLeft + arrowSizeLeft / 2,
+      centerXLeft,
+      centerYLeft
+    );
+    g.drawLine(
+      centerXLeft,
+      centerYLeft,
+      centerXLeft - arrowSizeLeft,
+      centerYLeft - arrowSizeLeft / 2
+    );
+  
+    if (information.waterLED == "ON") {
+      //In case there is no enough water
+      g.clear();
+      g.setFont("Vector", 20);
+      g.setColor(0xffffff);
+      g.drawString(`Check the Water Tank`, 10, 100);
+    } else if (information.trashLED == "ON") {
+      //In case the trash tank is full
+      g.clear();
+      g.setFont("Vector", 20);
+      g.setColor(0xffffff);
+      g.drawString(`Check the Trash Tank`, 10, 100);
+    } else if (information.alarmLED == "ON") {
+      //In case the alarm led is on
+      g.clear();
+      g.setFont("Vector", 20);
+      g.setColor(0xffffff);
+      g.drawString(`Alarm is ON`, 10, 100);
+    } else {
+      // Calculate cursor position and draw cursor rectangle
+      const cursorY = 55 + cursorPosition * 25; // Adjust Y-coordinate of the cursor
+      const cursorWidth = g.getWidth() - 20; // Width of the cursor (same as screen width)
+      const cursorHeight = 25; // Height of the cursor
+      g.setColor(0x89f0aa);
+      g.fillRect(0, cursorY, cursorWidth, cursorY + cursorHeight);
+  
+      //Draw the menu lines
+      g.setColor(0xffffff);
+      g.drawString(
+        `One Cup: ${information.oneCupLED == "ON" ? "Ready" : "Wait..."}`,
+        5,
+        60
+      );
+      g.drawString(
+        `Two Cups: ${information.twoCupsLED == "ON" ? "Ready" : "Wait..."}`,
+        5,
+        85
+      );
+      g.drawString(`Steam Function: ${states.steamState}`, 5, 110);
+      g.drawString(
+        `Energy Saving: ${information.ecoLED == "ON" ? "ON" : "OFF"}`,
+        5,
+        135
+      );
+      g.drawString(`Rinse the Machine`, 5, 160);
+      g.setColor(0xffe0); // White color
+      g.drawString(`TURN OFF`, 50, 210);
+    }
+  
+    g.flip();
+  }
+  
+  function btn1Press() {
+    //This function is called when button 1 is pressed
+    //To move the cursor up
+    if (locked == 1) {
+      if (cursorPosition === 0) {
+        cursorPosition = 6;
+      } else if (cursorPosition === 6) {
+        cursorPosition = 4;
+      } else {
+        cursorPosition =
+          (cursorPosition - 1 + Object.keys(objectData).length) %
+          Object.keys(objectData).length;
+      }
+      screenWriting(objectData);
+    }
+  }
+  
+  //13-move the cursor to the desired line {the desired action}
+  function btn3Press() {
+    //This function is called when button 3 is pressed
+    //To move the cursor down
+    if (locked == 1) {
+      if (cursorPosition === 6) {
+        cursorPosition = 0;
+      } else if (cursorPosition === 4) {
+        cursorPosition = 6;
+      } else {
+        cursorPosition = (cursorPosition + 1) % Object.keys(objectData).length;
+      }
+      screenWriting(objectData);
+    } else if (locked == 0) {
+      console.log("Disconnected");
+      setTimeout(function () {
+        device.disconnect();
+        Bangle.showLauncher();
+
+      }, 2000);
+    }
+  }
+  
+  //15-call the sending data to esp32 function and provide the pin number
+  function btn2Press() {
+    //This function is called when button  is pressed
+    //To send a command to the esp32 deppending on the cursor position.
+        console.log(locked + "        " + device.connected + "     " +  HOME)
+  
+    if (locked == 1) {
+      if (cursorPosition === 0) {
+        // here position 0 to prepare one cup
+        if (objectData.oneCupLED == "ON") {
+          sendData(14);
+          g.clear();
+          g.setFont("Vector", 20);
+          g.setColor(0xffffff);
+          g.drawString("Preparing your Coffee", 10, 100);
+                  setTimeout(function () {
+            objectData.oneCupLed = "ON";
+            states.oneCupLed = "ON";
+            console.log("on");
+            screenWriting(objectData);
+          }, 5000);
+        } else if (objectData.oneCupLED == "OFF") {
+          g.clear();
+          g.setFont("Vector", 20);
+          g.setColor(0xffffff);
+          g.drawString("Wait to get Ready", 10, 100);
+          setTimeout(function () {
+            screenWriting(objectData);
+          }, 2000);
+        }
+      }
+  
+      if (cursorPosition === 1) {
+        // here position 1 to prepare two cups
+        if (objectData.twoCupsLED == "ON") {
+          sendData(13);
+          g.clear();
+          g.setFont("Vector", 20);
+          g.setColor(0xffffff);
+          g.drawString("Preparing your Coffee", 10, 100);
+          setTimeout(function () {
+            objectData.twoCupsLed = "ON";
+            states.twoCupsLed = "ON";
+            console.log("on");
+            screenWriting(objectData);
+          }, 5000);
+        } else if (objectData.twoCupsLED == "OFF") {
+          g.clear();
+          g.setFont("Vector", 20);
+          g.setColor(0xffffff);
+          g.drawString("Wait to get Ready", 10, 100);
+          setTimeout(function () {
+            screenWriting(objectData);
+          }, 2000);
+        }
+      }
+  
+      if (cursorPosition === 2) {
+        // here position 2 to add steam
+        if (states.steamState == "OFF") {
+          sendData(21);
+          states.steamState = "Wait...";
+          screenWriting(objectData);
+          setTimeout(function () {
+            objectData.steamLED = "ON";
+            states.steamState = "ON";
+            console.log("on");
+            screenWriting(objectData);
+          }, 10000);
+        } else if (objectData.steamLED == "ON") {
+          sendData(21);
+          setTimeout(function () {
+            objectData.steamLED = "OFF";
+            states.steamState = "OFF";
+            console.log("on");
+            screenWriting(objectData);
+          }, 1000);
+        }
+      }
+  
+      if (cursorPosition === 3) {
+        // here position 3 to turn on Eco system
+        if (l == 0) {
+          sendData(18);
+          setTimeout(function () {
+            objectData.ecoLED = "ON";
+            screenWriting(objectData);
+          }, 750);
+          l = 1;
+        } else {
+          sendData(18);
+          setTimeout(function () {
+            objectData.ecoLED = "OFF";
+            screenWriting(objectData);
+          }, 750);
+          l = 0;
+        }
+      }
+  
+      //16- the user choosed the rinsing process
+      if (cursorPosition === 4) {
+        // here position 4 to rinse the machine
+        sendData(19); //17- call the sendData function with pin 19 which is connected to the rinsong pushbutton
+        g.clear();
+        g.setFont("Vector", 20);
+        g.setColor(0xffffff);
+        g.drawString("Rinsing in process", 10, 100);
+        setTimeout(function () {
+          objectData.rinsingLED = "ON";
+          screenWriting(objectData);
+  
+          console.log("on");
+        }, 5000);
+        setTimeout(function () {
+          objectData.oneCupLED = "ON";
+          objectData.twoCupsLED = "ON";
+          screenWriting(objectData);
+  
+          console.log("on");
+        }, 5000);
+      }
+  
+      if (cursorPosition === 6) {
+        // here position 6 to turn off the machine
+        sendData(27);
+        setTimeout(function () {
+          locked = 0;
+          HOME = 0;
+          home();
+        }, 1500);
+      }
+    }
+  }
+  
+  // to detect if any of the buttons is pressed
+  setWatch(btn1Press, BTN1, { repeat: true, edge: "rising", debounce: 50 });
+  setWatch(btn2Press, BTN2, { repeat: true, edge: "rising", debounce: 50 }); //14-call the fucntion of the desired action
+  setWatch(btn3Press, BTN3, { repeat: true, edge: "rising", debounce: 50 }); //12-call the function of moving the cursor
+  
+  //18-send the pin number to the esp32.
+  function sendData(pin) {
+    //This function to send commands to the esp32
+    let number = pin;
+    let info = number.toString();
+    device
+      .getPrimaryService(serviceUuid)
+      .then((service) => {
+        return service.getCharacteristic(characteristicUuid);
+      })
+      .then((characteristic) => {
+        return characteristic.writeValue(info);
+      })
+      .catch((error) => {
+        console.log("Error:", error);
+      });
+  }
+  
+  
+  
+  //6-draw the home page after successfuly connected
+  function onConnected(gatt) {
+    //This function is called once the bangle is connected to the esp32
+    device = gatt;
+    setInterval(function () {
+      //This fucntion is called every 1.5 seconds to constantly check if the device is diconnected ot not
+  
+      if (!device.connected) {
+        g.clear();
+        g.setColor(0xffffff);
+        g.drawString("Device disconnected", 30, 100);
+        g.drawString("please try again.", 40, 120);
+        locked = 3;
+      }
+    }, 1500);
+  
+    setTimeout(home, 2000); // 7-This line to call the home function after connecting by 2 seconds
+    console.log("Connected to server");
+  
+    device
+      .getPrimaryService(serviceUuid)
+      .then(function (service) {
+        return service.getCharacteristic(characteristicUuid);
+      })
+  
+      .catch(function (error) {
+        console.log("Error1:", error);
+        g.clear();
+        g.setColor(0xffffff);
+        g.drawString("Unable to Connect", 50, 100);
+        g.drawString("please try again.", 50, 120);
+      });
+  }
+  
+  //4-Start the connecting by bluetooth process
+  function connectToDevice() {
+    //This function to start the connection between the bangle and esp32
+    NRF.connect("cc:db:a7:49:9c:ca")
+      .then(onConnected) //5-When the connection is successful call onConnected function
+      .catch(function (error) {
+        console.log("Error2:", error);
+      });
+  }
+  
+  //8-the home function is called and waiting for a button press to start the machine
+  function home() {
+    //This function to draw the home page before turning on the machine
+    g.clear();
+    g.setFont("Vector", 15);
+    g.setColor(0xffffff);
+    g.drawString(`Back`, g.getWidth() - 50, g.getHeight() - 20);
+    g.drawString(`Device: Connected`, 60, 20);
+    g.setColor(0x89f0aa);
+    g.fillRect(40, 150, 200, 90);
+    g.setFont("Vector", 20);
+    g.setColor(0xffffff);
+    g.drawString("Press to start", 50, 100);
+    g.drawString("the Machine", 65, 120);
+  }
+  
+  //9-When the user press button 2 at the home page
+  setWatch(
+    //Here to check if Button is pressed in the beginning to send comand to start the machine
+    function () {
+      console.log(locked + "        " + device.connected + "     " +  HOME);
+      if (locked == 0 && device.connected && HOME == 0) {
+        setTimeout(function () {
+          objectData.oneCupLED = "ON";
+          objectData.twoCupsLED = "ON";
+          screenWriting(objectData); //10-call the funtion to draw the main menu (go to the top of the code)
+          console.log("on");
+        }, 5000);
+        setTimeout(function () {
+          cursorPosition = 0;
+          sendData(27);
+          screenWriting(objectData);
+          setTimeout(function () {
+            locked = 1;
+            HOME = 1;
+          }, 1000);
+        }, 1500);
+      } else if (locked == 0 && !device.connected) {
+        Bangle.showLauncher();
+      } else if (locked == 3) {
+        Bangle.showLauncher();
+      }
+    },
+    BTN2,
+    { repeat: true, edge: "rising", debounce: 50 }
+  );
+  
+  //2-Draw the waiting for connecting page
+  function start() {
+    //This function to draw the waiting page until the device is connected
+    g.clear();
+    g.setFont("Vector", 20);
+    g.setColor(0xffffff);
+    g.drawString("Wait to connect to", 40, 100);
+    g.drawString("the Machine", 65, 120);
+    setTimeout(connectToDevice, 2000); //3-after 2 seconds call connectToDevice function
+  }
+  
+      
+  start(); //1-once the app is openned...call the start function
+  function hi(){
+  console.log("hi");
+  }
+  hi();
